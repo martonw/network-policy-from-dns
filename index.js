@@ -1,12 +1,14 @@
-const Client = require('kubernetes-client').Client
-const config = require('kubernetes-client').config
-const JSONStream = require('json-stream')
+
 const bunyan = require('bunyan')
 const dns = require('dns')
 
+const { KubeAdapter } = require('./lib/kube-adapter')
+
 const logger = bunyan.createLogger({ name: 'dns-network-policy-generator', level: 'trace' })
 
-const crdDefinition = require('./dnsnetworkpolicy-crd.json')
+const kubeAdapter = new KubeAdapter({
+  logger
+})
 
 // lookup for setTimeout handlers
 // const pollDnsTimers = {}
@@ -26,15 +28,9 @@ function pollDns (dnsTrackObject) {
   })
 }
 
-function watchDnsNetworkPolicies (client) {
+function watchDnsNetworkPolicies () {
   logger.info({}, 'Start watching dnsnetworkpolicies')
-  const stream = client.apis['alpaca.markets'].v1beta1.watch.dnsnetworkpolicies.getStream()
-  const jsonStream = new JSONStream()
-  stream.pipe(jsonStream)
-
-  jsonStream.on('data', async event => {
-    logger.debug({ obj: event.object, eventType: event.type }, 'event recived for a DnsNetworkPolicy')
-    // TODO: add validations..
+  kubeAdapter.registerDnsNetworkPolicyHandler((event) => {
     if (event.type === 'ADDED') {
       const dnsTrackObject = {
         dnsRecords: event.object.dnsNames,
@@ -43,7 +39,7 @@ function watchDnsNetworkPolicies (client) {
       }
       pollDns(dnsTrackObject)
     } else if (event.type === 'DELETED') {
-      // implement
+      // TODO: implement
     } else {
       logger.error({ obj: event.object, eventType: event.type }, 'no handler logic implemented for event!')
     }
@@ -52,32 +48,20 @@ function watchDnsNetworkPolicies (client) {
 
 async function main () {
   try {
-    const client = new Client({ config: config.fromKubeconfig() })
-    await client.loadSpec()
-    logger.info({}, 'kube context loaded')
-
-    // Create the CRD if it doesn't already exist.
-    try {
-      logger.debug({}, 'Try to create crd definition - assuming it is not exists')
-      await client.apis['apiextensions.k8s.io'].v1beta1.crd.post({ body: crdDefinition })
-      logger.info({}, 'CRD created')
-    } catch (err) {
-      // API returns a 409 Conflict if CRD already exists.
-      if (err.statusCode === 409) {
-        logger.debug({}, 'crd already exists')
-      } else {
-        throw err
-      }
-    }
-
-    // Add endpoints to our client
-    client.addCustomResourceDefinition(crdDefinition)
+    await kubeAdapter.initKubernetesClient()
+    await kubeAdapter.assertCrdExists()
 
     // watch for entries
-    watchDnsNetworkPolicies(client)
+    watchDnsNetworkPolicies()
   } catch (err) {
     console.error('Error: ', err)
+    process.exit(1)
   }
+
+  kubeAdapter.on('error', (err) => {
+    logger.fatal({ err }, 'Received error event on the kubernetes json stream')
+    process.exit(2)
+  })
 }
 
 main()
