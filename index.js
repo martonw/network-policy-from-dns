@@ -19,13 +19,71 @@ function pollDns (dnsTrackObject) {
     return
   }
   const dnsName = dnsTrackObject.dnsRecords[0].dns
-  dns.resolve4(dnsName, { ttl: true }, (err, addresses) => {
+  dns.resolve4(dnsName, { ttl: true }, async (err, addresses) => {
     if (err) {
       logger.error({ err, dnsName, ruleName: dnsTrackObject.ruleName }, 'failed to resolve dns record')
       return
     }
     logger.debug({ addresses, dnsName, ruleName: dnsTrackObject.ruleName }, 'dns resolved')
+    const npName = getNetpolName(dnsTrackObject.ruleName)
+    // TODO: namespace support to be added
+    const targetNamespace = 'default'
+    const existingNetpol = await kubeAdapter.getNetworkPolicyByName(npName)
+    if (existingNetpol) {
+      // TODO: first check for label 'npfd-generated-from' and error if this is not present --> we should not touch it
+      // TODO: check and compare if we are in align
+    } else {
+      // no such netpol yet, lets go ahead and create it
+      const npResource = generateNetpolObject({
+        name: npName,
+        namespace: targetNamespace,
+        addresses: addresses.map(addrObj => addrObj.address),
+        ruleName: dnsTrackObject.ruleName
+      })
+      logger.debug({ npName, ruleName: dnsTrackObject.ruleName, netpolResouce: npResource }, 'attempting to generate a new netpol')
+      // actually create it
+      await kubeAdapter.createNetworkPolicy(npResource, targetNamespace)
+      logger.info({ npName, ruleName: dnsTrackObject.ruleName, dnsName }, 'netpol created')
+    }
   })
+}
+
+function getNetpolName (ruleName) {
+  // Later could be refactored to a layered config mangement
+  const npNamePrefix = process.env.NETPOL_NAME_PREFIX || 'npfd-'
+  // for now we jsut assume that length will not be too long and allowed character set is also fine
+  return npNamePrefix + ruleName
+}
+
+function generateNetpolObject (netpolData) {
+  return {
+    apiVersion: 'networking.k8s.io/v1',
+    kind: 'NetworkPolicy',
+    metadata: {
+      name: netpolData.name,
+      namespace: netpolData.namespace,
+      labels: {
+        'npfd-generated-from': netpolData.ruleName
+      }
+    },
+    spec: {
+      egress: [
+        {
+          to: netpolData.addresses.map(addr => {
+            return {
+              ipBlock: {
+                cidr: `${addr}/32`
+              }
+            }
+          })
+        }
+      ],
+      podSelector: {},
+      policyTypes: [
+        'Egress'
+      ]
+    }
+  }
 }
 
 function watchDnsNetworkPolicies () {
