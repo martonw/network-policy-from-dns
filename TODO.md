@@ -9,3 +9,6 @@
 * rename alpaca.markets to "opensource" domain
 * add ci
 * add periodical dns lookup to detect potential changes in IP list
+
+## Other
+(not to myself: useful vscode extention for code coverage: https://marketplace.visualstudio.com/items?itemName=markis.code-coverage&ssr=false#overview)

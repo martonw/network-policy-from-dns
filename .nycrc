@@ -1,0 +1,7 @@
+{
+"all": true,
+"include": ["lib/**/*.js"],
+"exclude": ["lib/**/*.spec.js"],
+"extension": [".js"],
+"reporter": ["text-summary", "lcov"]
+}

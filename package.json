@@ -4,14 +4,16 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "semantic-release": "semantic-release"
+    "test": "mocha lib/**/*.spec.js",
+    "semantic-release": "semantic-release",
+    "coverage": "nyc npm run test"
   },
   "author": "Marton Waszlavik",
   "license": "ISC",
   "dependencies": {
     "bunyan": "^1.8.15",
-    "kubernetes-client": "^9.0.0"
+    "kubernetes-client": "^9.0.0",
+    "should": "^13.2.3"
   },
   "devDependencies": {
     "@semantic-release/changelog": "^6.0.1",
@@ -23,6 +25,7 @@
     "eslint-plugin-node": "^11.1.0",
     "eslint-plugin-promise": "^5.1.0",
     "mocha": "^9.1.4",
+    "nyc": "^15.1.0",
     "semantic-release": "^19.0.2"
   },
   "repository": {
